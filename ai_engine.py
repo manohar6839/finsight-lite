@@ -1,10 +1,18 @@
 import os
+import streamlit as st
 import google.generativeai as genai
 from dotenv import load_dotenv
 import time
 
 load_dotenv()
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+
+# Try to get key from Streamlit Secrets (Cloud) OR Environment Variable (Local)
+api_key = st.secrets.get("GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY")
+
+if not api_key:
+    st.error("API Key not found. Please set it in Streamlit Secrets.")
+else:
+    genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 
 def get_available_models():
     """Lists models your API key can actually access."""
