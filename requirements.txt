@@ -4,4 +4,4 @@ python-dotenv
 pandas
 requests
 pypdf
-pip install -U google-generativeai
+
