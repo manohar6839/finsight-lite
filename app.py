@@ -5,7 +5,7 @@ import tempfile
 import os
 import requests
 from pypdf import PdfReader, PdfWriter
-from ai_engine import analyze_document_with_gemini, get_available_models
+from ai_engine import analyze_document_with_gemini
 
 # --- Page Config ---
 st.set_page_config(page_title="FinSight Lite", layout="wide")
