@@ -5,17 +5,43 @@ import tempfile
 import os
 import requests
 from pypdf import PdfReader, PdfWriter
-from ai_engine import analyze_document_with_gemini
+from ai_engine import analyze_document_with_gemini, get_available_models
 
 # --- Page Config ---
 st.set_page_config(page_title="FinSight Lite", layout="wide")
 
-st.title("🤖 FinSight Lite: AI Annual Report Analyzer")
-st.markdown("Using **Gemini 1.5 Flash** | Optimize costs by selecting specific pages.")
+# --- SIDEBAR: Global Settings (Always Visible) ---
+with st.sidebar:
+    st.title("⚙️ Analysis Settings")
+    st.info("Define these settings *before* or *after* uploading.")
+    
+    # 1. Page Selection
+    st.subheader("1. Page Selection")
+    page_selection = st.text_input(
+        "Enter Page Numbers:",
+        placeholder="e.g., 1, 3-5, 10",
+        help="Leave empty to analyze the whole PDF. Use ranges like 3-5."
+    )
+    if page_selection:
+        st.success(f"✅ Targeted Mode: Pages {page_selection}")
+    else:
+        st.markdown("*Analyzing Full Document*")
 
-# --- Helper Functions (Same as before) ---
+    st.divider()
+    
+    # 2. API Diagnostics (For your 404 Error)
+    with st.expander("🔧 Troubleshooting", expanded=False):
+        st.markdown("If you get a 404 error, check which models are available to your API Key:")
+        if st.button("List My Models"):
+            try:
+                models = get_available_models()
+                st.write(models)
+            except Exception as e:
+                st.error(f"Error: {e}")
+
+# --- Helper Functions ---
 def parse_page_selection(selection_str, max_pages):
-    if not selection_str.strip():
+    if not selection_str or not selection_str.strip():
         return None
     selected_pages = set()
     try:
@@ -52,112 +78,82 @@ def download_pdf_from_url(url):
         response = requests.get(url, headers=headers, stream=True)
         response.raise_for_status()
         if 'application/pdf' not in response.headers.get('Content-Type', ''):
-            st.error("⚠️ The URL provided does not point to a PDF file.")
+            st.error("⚠️ URL is not a PDF.")
             return None
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
             for chunk in response.iter_content(chunk_size=8192):
                 tmp_file.write(chunk)
             return tmp_file.name
     except Exception as e:
-        st.error(f"❌ Failed to download PDF: {e}")
+        st.error(f"❌ Download failed: {e}")
         return None
 
-# --- UI Step 1: Input Source ---
-st.header("1. Select Document")
-tab1, tab2 = st.tabs(["📂 Upload PDF", "🔗 Paste Report URL"])
+# --- Main Content ---
+st.title("🤖 FinSight Lite")
+st.markdown("Analyze Annual Reports using **Gemini 1.5 Flash**.")
 
+tab1, tab2 = st.tabs(["📂 Upload PDF", "🔗 Paste URL"])
 raw_pdf_path = None
 file_name = None
 
 with tab1:
-    uploaded_file = st.file_uploader("Upload Annual Report", type="pdf")
+    uploaded_file = st.file_uploader("Choose a PDF file", type="pdf")
     if uploaded_file:
         raw_pdf_path = save_uploaded_file(uploaded_file)
         file_name = uploaded_file.name
 
 with tab2:
-    url_input = st.text_input("Paste Report URL:", placeholder="https://example.com/report.pdf")
+    url_input = st.text_input("Enter PDF URL")
     if url_input and st.button("Fetch PDF"):
         with st.spinner("Downloading..."):
             path = download_pdf_from_url(url_input)
             if path:
                 raw_pdf_path = path
                 file_name = "url_document.pdf"
-                st.success("✅ Downloaded!")
+                st.success("Downloaded!")
 
-# --- UI Step 2: Page Selection (Only shows after file is loaded) ---
 if raw_pdf_path:
     st.divider()
-    st.header("2. Select Pages to Analyze")
     
     # Get Page Count
     try:
         reader = PdfReader(raw_pdf_path)
         total_pages = len(reader.pages)
-        st.info(f"📄 **Document Loaded:** {file_name} — Total Pages: **{total_pages}**")
-    except Exception:
-        st.error("Error reading PDF structure.")
+    except:
         total_pages = 0
-
-    # --- DISTINCT INPUT SECTION ---
-    col_sel, col_info = st.columns([2, 1])
-    
-    with col_sel:
-        page_selection = st.text_input(
-            "Enter Page Numbers (Recommended):", 
-            placeholder="e.g., 1, 3-5, 10",
-            help="Extracting only specific pages makes the AI faster and more accurate."
-        )
         
-    with col_info:
-        # Visual Feedback
-        if page_selection:
-            st.success("✅ Specific pages selected")
+    st.write(f"📄 **Loaded:** {file_name} ({total_pages} pages)")
+
+    # Validation Logic for Page Selection
+    selected_indices = None
+    if page_selection:
+        selected_indices = parse_page_selection(page_selection, total_pages)
+        if selected_indices:
+            st.info(f"⚡ Analyzing **{len(selected_indices)}** specific pages out of {total_pages}.")
         else:
-            st.warning("⚠️ Analyzing entire document (Slower)")
+            st.warning("⚠️ Page range invalid or out of bounds. Using full document.")
 
-    st.divider()
-    
-    # --- UI Step 3: Execution ---
-    st.header("3. Extraction")
-    
-    if st.button("🚀 Run AI Analysis", type="primary", use_container_width=True):
-        
-        final_pdf_path = raw_pdf_path
-        selected_indices = None
-        
-        # Logic to handle page slicing
-        if page_selection:
-            selected_indices = parse_page_selection(page_selection, total_pages)
-            if selected_indices:
-                with st.spinner(f"Slicing PDF to keep only {len(selected_indices)} pages..."):
-                    final_pdf_path = extract_pages_from_pdf(raw_pdf_path, selected_indices)
-            else:
-                st.warning("Invalid page range, using full document.")
-
-        # Run Analysis
-        with st.spinner("🤖 AI is reading the document..."):
+    if st.button("🚀 Analyze Report", type="primary"):
+        with st.spinner("Processing..."):
             try:
-                raw_json = analyze_document_with_gemini(final_pdf_path)
+                final_path = raw_pdf_path
+                # Slice if needed
+                if selected_indices:
+                    final_path = extract_pages_from_pdf(raw_pdf_path, selected_indices)
+                
+                # CALL AI
+                raw_json = analyze_document_with_gemini(final_path)
                 data = json.loads(raw_json)
                 
-                st.subheader("📊 Extracted Data")
+                # Display
+                st.subheader("Results")
                 df = pd.DataFrame([data]).T.reset_index()
                 df.columns = ["Metric", "Value"]
-                edited_df = st.data_editor(df, num_rows="dynamic", use_container_width=True)
+                st.data_editor(df, use_container_width=True)
                 
-                # Download
-                csv = edited_df.to_csv(index=False).encode('utf-8')
-                st.download_button(
-                    "⬇️ Download Data as CSV",
-                    csv,
-                    "financial_data.csv",
-                    "text/csv"
-                )
-
-                # Cleanup sliced file
-                if selected_indices and final_pdf_path != raw_pdf_path:
-                    os.remove(final_pdf_path)
-
+                # Cleanup
+                if selected_indices and final_path != raw_pdf_path:
+                    os.remove(final_path)
+                    
             except Exception as e:
-                st.error(f"Analysis failed: {e}")
+                st.error(f"Analysis Failed: {e}")
