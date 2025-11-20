@@ -1,18 +1,17 @@
 import os
-import streamlit as st
+import streamlit as st 
 import google.generativeai as genai
-from dotenv import load_dotenv
 import time
+import json # Ensure json is imported for parsing the error response
 
-load_dotenv()
-
-# Try to get key from Streamlit Secrets (Cloud) OR Environment Variable (Local)
+# --- Configuration (Should be outside functions for efficiency) ---
 api_key = st.secrets.get("GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY")
 
-if not api_key:
-    st.error("API Key not found. Please set it in Streamlit Secrets.")
+if api_key:
+    genai.configure(api_key=api_key)
 else:
-    genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+    # This prevents errors if the app starts before the secret is set
+    st.error("API Key not configured. Please set GEMINI_API_KEY in Streamlit Secrets.")
 
 def analyze_document_with_gemini(file_path, mime_type="application/pdf"):
     # 1. Upload file
