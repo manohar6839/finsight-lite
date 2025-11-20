@@ -23,7 +23,7 @@ with st.sidebar:
         help="Leave empty to analyze the whole PDF. Use ranges like 3-5."
     )
     if page_selection:
-        st.success(f"✅ Targeted Mode: Pages {page_selection}")
+        st.success(f"✅ Sure, Focus Mode: Will check Page {page_selection}")
     else:
         st.markdown("*Analyzing Full Document*")
 
